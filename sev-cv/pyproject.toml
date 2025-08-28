@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sevcv"
+version = "0.0.1"
+description = "SEV-CV: Self-Evolutionary Generative Transformers (TensorFlow skeleton)"
+requires-python = ">=3.9"
+dependencies = [
+  "tensorflow>=2.12",
+  "tensorflow-datasets>=4.9",
+  "numpy>=1.23",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,13 @@
+# Minimal baseline config for Phase 0 (CIFAR-10, 32x32)
+train:
+  steps: 2000
+  batch_size: 128
+  img_size: 32
+  z_dim: 128
+  lr: 0.0002
+model:
+  generator:
+    depth: 4
+    heads: 4
+  discriminator:
+    ch: 64

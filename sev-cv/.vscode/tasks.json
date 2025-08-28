@@ -1,0 +1,17 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Install Python deps",
+			"type": "shell",
+			"command": "python",
+			"args": [
+				"-m",
+				"pip",
+				"install",
+				"-e",
+				"."
+			]
+		}
+	]
+}
