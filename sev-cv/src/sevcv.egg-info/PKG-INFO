@@ -1,0 +1,10 @@
+Metadata-Version: 2.4
+Name: sevcv
+Version: 0.0.1
+Summary: SEV-CV: Self-Evolutionary Generative Transformers (TensorFlow skeleton)
+Requires-Python: >=3.9
+License-File: LICENSE
+Requires-Dist: tensorflow>=2.12
+Requires-Dist: tensorflow-datasets>=4.9
+Requires-Dist: numpy>=1.23
+Dynamic: license-file

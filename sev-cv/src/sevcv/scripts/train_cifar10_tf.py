@@ -11,10 +11,18 @@ def main():
     parser.add_argument("--z", type=int, default=128)
     parser.add_argument("--img", type=int, default=32)
     parser.add_argument("--evolve", action="store_true")
+    parser.add_argument("--dataset", type=str, default="cifar10", choices=["cifar10", "coco2017"], help="dataset name")
     args = parser.parse_args()
 
     evo = EvolutionController(pop_size=4) if args.evolve else None
-    result = train_phase0(steps=args.steps, batch_size=args.batch, img_size=args.img, z_dim=args.z, evo=evo)
+    result = train_phase0(
+        steps=args.steps,
+        batch_size=args.batch,
+        img_size=args.img,
+        z_dim=args.z,
+        evo=evo,
+        dataset=args.dataset,
+    )
     print({k: v for k, v in result.items() if k != "generator" and k != "discriminator"})
 
 

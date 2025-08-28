@@ -2,7 +2,7 @@ from __future__ import annotations
 import tensorflow as tf
 from typing import Dict, Any
 from sevcv.models import SEVGenerator, SEVDiscriminator
-from sevcv.data.cifar10 import make_cifar10
+from sevcv.data.factory import make_dataset
 from sevcv.evolution.controller import EvolutionController, Individual
 
 
@@ -33,8 +33,15 @@ def train_phase0(
     z_dim: int = 128,
     evo: EvolutionController | None = None,
     log_every: int = 100,
+    dataset: str = "cifar10",
 ):
-    ds = make_cifar10(batch_size=batch_size, img_size=img_size)
+    if dataset == "cifar10":
+        ds = make_dataset("cifar10", batch_size=batch_size, img_size=img_size)
+    elif dataset == "coco2017":
+        # COCO at 128x128 fits comfortably under 20GB downloads
+        ds = make_dataset("coco2017", batch_size=batch_size, img_size=max(64, img_size), split="train")
+    else:
+        raise ValueError(f"Unsupported dataset: {dataset}")
     it = iter(ds)
 
     # Choose policy from evolution controller or defaults
