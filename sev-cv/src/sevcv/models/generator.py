@@ -1,43 +1,43 @@
 """
-Minimal TensorFlow Generator (SEV-G) using ViT-like blocks with style modulation.
-This is a simplified backbone to get CIFAR-10 32x32 working as Phase 0.
+Minimal TensorFlow/Keras Generator (SEV-G) using ViT-like blocks.
+Phase 0 target: CIFAR-10 32x32 sanity.
 """
 from __future__ import annotations
 import tensorflow as tf
+import keras
+from keras import layers
 
 
-class StyleMLP(tf.keras.layers.Layer):
+class StyleMLP(layers.Layer):
     def __init__(self, latent_dim: int, channels: int, name: str | None = None):
         super().__init__(name=name)
-        self.fc = tf.keras.layers.Dense(channels * 2)
+        self.fc = layers.Dense(channels * 2)
 
     def call(self, z):
-        # returns (scale, shift)
         h = self.fc(z)
         scale, shift = tf.split(h, 2, axis=-1)
         return scale, shift
 
 
-class ModulatedDense(tf.keras.layers.Layer):
+class ModulatedDense(layers.Layer):
     def __init__(self, units: int, name: str | None = None):
         super().__init__(name=name)
         self.units = units
-        self.dense = tf.keras.layers.Dense(units)
+        self.dense = layers.Dense(units)
 
     def call(self, x, scale, shift):
         y = self.dense(x)
-        # scale and shift broadcasting
         return y * tf.expand_dims(scale, axis=1) + tf.expand_dims(shift, axis=1)
 
 
-class MLPBlock(tf.keras.layers.Layer):
+class MLPBlock(layers.Layer):
     def __init__(self, dim: int, mlp_ratio: float = 4.0, drop: float = 0.0, name: str | None = None):
         super().__init__(name=name)
         hidden = int(dim * mlp_ratio)
-        self.fc1 = tf.keras.layers.Dense(hidden)
-        self.act = tf.keras.layers.GELU()
-        self.fc2 = tf.keras.layers.Dense(dim)
-        self.drop = tf.keras.layers.Dropout(drop)
+        self.fc1 = layers.Dense(hidden)
+        self.act = layers.Activation(tf.nn.gelu)
+        self.fc2 = layers.Dense(dim)
+        self.drop = layers.Dropout(drop)
 
     def call(self, x, training=False):
         h = self.fc1(x)
@@ -48,28 +48,27 @@ class MLPBlock(tf.keras.layers.Layer):
         return h
 
 
-class WindowAttention(tf.keras.layers.Layer):
+class WindowAttention(layers.Layer):
     def __init__(self, dim: int, num_heads: int, name: str | None = None):
         super().__init__(name=name)
-        self.attn = tf.keras.layers.MultiHeadAttention(num_heads=num_heads, key_dim=dim // num_heads)
-        self.norm_q = tf.keras.layers.LayerNormalization(epsilon=1e-6)
-        self.norm_kv = tf.keras.layers.LayerNormalization(epsilon=1e-6)
+        self.attn = layers.MultiHeadAttention(num_heads=num_heads, key_dim=dim // num_heads)
+        self.norm_q = layers.LayerNormalization(epsilon=1e-6)
+        self.norm_kv = layers.LayerNormalization(epsilon=1e-6)
 
     def call(self, x, training=False):
-        # x: [B, N, C]
         q = self.norm_q(x)
         kv = self.norm_kv(x)
         y = self.attn(q, kv, training=training)
         return y
 
 
-class TransformerBlock(tf.keras.layers.Layer):
+class TransformerBlock(layers.Layer):
     def __init__(self, dim: int, heads: int, mlp_ratio: float = 4.0, drop: float = 0.0, name: str | None = None):
         super().__init__(name=name)
-        self.norm1 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
+        self.norm1 = layers.LayerNormalization(epsilon=1e-6)
         self.attn = WindowAttention(dim, heads)
-        self.drop = tf.keras.layers.Dropout(drop)
-        self.norm2 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
+        self.drop = layers.Dropout(drop)
+        self.norm2 = layers.LayerNormalization(epsilon=1e-6)
         self.mlp = MLPBlock(dim, mlp_ratio, drop)
 
     def call(self, x, training=False):
@@ -80,40 +79,44 @@ class TransformerBlock(tf.keras.layers.Layer):
         return x
 
 
-class PatchUpsample(tf.keras.layers.Layer):
+class PatchUpsample(layers.Layer):
     def __init__(self, in_ch: int, out_ch: int, name: str | None = None):
         super().__init__(name=name)
-        self.conv = tf.keras.layers.Conv2DTranspose(out_ch, kernel_size=4, strides=2, padding="same")
-        self.act = tf.keras.layers.GELU()
+        self.conv = layers.Conv2DTranspose(out_ch, kernel_size=4, strides=2, padding="same")
+        self.act = layers.Activation(tf.nn.gelu)
 
     def call(self, x, training=False):
         x = self.conv(x)
         return self.act(x)
 
 
-class SEVGenerator(tf.keras.Model):
+class SEVGenerator(keras.Model):
     def __init__(self, latent_dim: int = 128, base_dim: int = 256, img_size: int = 32, img_channels: int = 3,
                  depth: int = 4, heads: int = 4, name: str | None = None):
         super().__init__(name=name)
         self.latent_dim = latent_dim
         self.img_size = img_size
         self.base_dim = base_dim
+        if (img_size % 4) != 0:
+            raise ValueError(f"img_size must be divisible by 4, got {img_size}")
+        start_res = img_size // 4
+        self._start_res = start_res
 
-        # map latent to a low-res grid, start at 8x8 for 32x32 target
-        self.fc = tf.keras.layers.Dense(8 * 8 * base_dim)
-        self.reshape = tf.keras.layers.Reshape((8, 8, base_dim))
+        # Start at (img_size//4)x(img_size//4) so two upsample stages reach img_size
+        self.fc = layers.Dense(start_res * start_res * base_dim)
+        self.reshape = layers.Reshape((start_res, start_res, base_dim))
 
         self.ups1 = PatchUpsample(base_dim, base_dim // 2)
         self.ups2 = PatchUpsample(base_dim // 2, base_dim // 4)
 
         # Transformer over flattened tokens
-        self.to_tokens = tf.keras.layers.Lambda(lambda x: tf.reshape(x, [tf.shape(x)[0], -1, tf.shape(x)[-1]]))
+        self.to_tokens = layers.Lambda(lambda x: tf.reshape(x, [tf.shape(x)[0], -1, tf.shape(x)[-1]]))
         self.blocks = [TransformerBlock(dim=base_dim // 4, heads=heads) for _ in range(depth)]
-        self.to_feat = tf.keras.layers.Lambda(
+        self.to_feat = layers.Lambda(
             lambda x: tf.reshape(x, [tf.shape(x)[0], self.img_size, self.img_size, tf.shape(x)[-1]])
         )
 
-        self.out = tf.keras.layers.Conv2D(filters=img_channels, kernel_size=1, padding="same", activation="tanh")
+        self.out = layers.Conv2D(filters=img_channels, kernel_size=1, padding="same", activation="tanh")
 
     def call(self, z, training=False):
         h = self.fc(z)
@@ -128,5 +131,5 @@ class SEVGenerator(tf.keras.Model):
         return x
 
 
-def build_generator(latent_dim: int = 128, img_size: int = 32, channels: int = 3) -> tf.keras.Model:
+def build_generator(latent_dim: int = 128, img_size: int = 32, channels: int = 3) -> keras.Model:
     return SEVGenerator(latent_dim=latent_dim, img_size=img_size, img_channels=channels)
